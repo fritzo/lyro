@@ -2,7 +2,7 @@ import json
 import os
 import sqlite3
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, NamedTuple
 
 from .distributions import Distribution, V
 from .random import RandomKey, hash_json
@@ -136,18 +136,25 @@ class MemoizeSqlite(Interpreter):
         return value
 
 
+class TraceNode(NamedTuple):
+    name: str
+    distribution: Distribution
+    rng: RandomKey | None
+    value: Any
+
+
 class Trace(Interpreter):
-    """Record a program trace."""
+    """Record program execution in a trace."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.values: Dict[str, Any] = {}
+        self.nodes: Dict[str, TraceNode] = {}
 
     async def sample(
         self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
     ) -> V:
         value: V = await self.base.sample(name, distribution, rng)
-        self.values[name] = value
+        self.nodes[name] = TraceNode(name, distribution, rng, value)
         return value
 
     def __enter__(self) -> "Trace":
@@ -155,19 +162,19 @@ class Trace(Interpreter):
         return self
 
 
-class Replay(Interpreter):
-    """Replay a trace against a program."""
+class Condition(Interpreter):
+    """Condition a program on data."""
 
-    def __init__(self, values: Dict[str, Any]) -> None:
+    def __init__(self, data: Dict[str, Any]) -> None:
         super().__init__()
-        assert isinstance(values, dict)
-        self.values = values
+        assert isinstance(data, dict)
+        self.data = data
 
     async def sample(
         self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
     ) -> V:
         try:
-            value: V = self.values[name]
+            value: V = self.data[name]
         except KeyError:
             value = await self.base.sample(name, distribution, rng)
         return value

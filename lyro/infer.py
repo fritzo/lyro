@@ -16,6 +16,6 @@ class Gibbs:
 
     async def step(self) -> Trace:
         assert self.trace is not None
-        for name, node in self.trace.values.items():
+        for name, node in self.trace.nodes.items():
             raise NotImplementedError("TODO")
         return self.trace

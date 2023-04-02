@@ -1,8 +1,8 @@
 from .interpreters import (
+    Condition,
     If,
     Memoize,
     MemoizeSqlite,
-    Replay,
     Standard,
     ThreadRandomKey,
     Trace,
@@ -11,10 +11,10 @@ from .interpreters import (
 from .runtime import sample
 
 __all__ = [
+    "Condition",
     "If",
     "Memoize",
     "MemoizeSqlite",
-    "Replay",
     "Standard",
     "ThreadRandomKey",
     "Trace",
