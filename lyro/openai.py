@@ -43,19 +43,17 @@ class ChatGPT(Distribution[str]):
         max_tokens: int | None = None,
     ) -> None:
         super().__init__()
+        self.messages = messages
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.messages = messages
 
     async def sample(self, rng: RandomKey) -> str:
-        # Adapted from API docs
-        # https://platform.openai.com/docs/api-reference/chat/create?lang=python
+        # See https://platform.openai.com/docs/api-reference/chat/create?lang=python
         request: Dict[str, Any] = dict(
-            model=self.model,
             messages=self.messages,
+            model=self.model,
             temperature=self.temperature,
-            stream=False,
         )
         if self.max_tokens is not None:
             request["max_tokens"] = self.max_tokens

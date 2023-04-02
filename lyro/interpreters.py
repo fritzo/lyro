@@ -2,13 +2,15 @@ import json
 import os
 import sqlite3
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Tuple
+from typing import Any, Callable, Dict
 
 from .distributions import Distribution, V
 from .random import RandomKey, hash_json
 
 
 class Interpreter(ABC):
+    """Abstract base class for probabilistic program interpreters."""
+
     base: "Interpreter | None" = None
 
     @abstractmethod
@@ -46,6 +48,27 @@ class Standard(Interpreter):
         return await distribution.sample(rng)
 
 
+class If(Interpreter):
+    """Conditional interpretation."""
+
+    def __init__(
+        self,
+        cond: Callable[[str, Distribution], bool],
+        true: Interpreter,
+    ):
+        super().__init__()
+        self.cond = cond
+        self.true = true
+
+    async def sample(
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
+        if self.cond(name, distribution):
+            return await self.true.sample(name, distribution)
+        assert self.base is not None
+        return await self.base.sample(name, distribution)
+
+
 class ThreadRandomKey(Interpreter):
     """Thread random keys through a program."""
 
@@ -68,14 +91,14 @@ class Memoize(Interpreter):
 
     def __init__(self) -> None:
         super().__init__()
-        self.cache: Dict[Tuple[Distribution, RandomKey], Any] = {}
+        self.cache: Dict[int, Any] = {}
 
     async def sample(
         self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
     ) -> V:
         if rng is None:
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
-        key = distribution, rng
+        key = hash((distribution, rng))
         if key not in self.cache:
             assert self.base is not None
             self.cache[key] = await self.base.sample(name, distribution, rng)
@@ -161,6 +184,7 @@ class Replay(Interpreter):
     """Replay a trace against a program."""
 
     def __init__(self, trace: Dict[str, Any]) -> None:
+        super().__init__()
         self.trace = trace
 
     async def sample(
@@ -174,5 +198,6 @@ INTERPRETER: Interpreter = Standard() + Memoize() + ThreadRandomKey()
 
 
 def set_interpreter(interpreter: Interpreter) -> None:
+    """Sets the global interpreter."""
     global INTERPRETER
     INTERPRETER = interpreter

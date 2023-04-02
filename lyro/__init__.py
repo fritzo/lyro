@@ -1,4 +1,5 @@
 from .interpreters import (
+    If,
     Memoize,
     MemoizeSqlite,
     Replay,
@@ -10,6 +11,7 @@ from .interpreters import (
 from .runtime import sample
 
 __all__ = [
+    "If",
     "Memoize",
     "MemoizeSqlite",
     "Replay",
