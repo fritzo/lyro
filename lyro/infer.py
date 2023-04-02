@@ -39,6 +39,9 @@ class Gibbs:
         with Condition(self.data), Trace() as self.trace:
             await self.model()
 
+        # Validate data.
+        assert set(self.data).issubset(self.trace.nodes)
+
         # Restrict to latent variables.
         nodes = {
             name: node
@@ -80,14 +83,15 @@ class Gibbs:
         prior = node.distribution
         local_posterior: Distribution = prior  # FIXME compute posterior
 
-        with Trace() as trace:
-            await lyro.sample(name, local_posterior)
-        self.trace.nodes.update(trace.nodes)
-        self.tasks.pop(name)
+        try:
+            with Trace() as trace:
+                await lyro.sample(name, local_posterior)
+            self.trace.nodes.update(trace.nodes)
+        finally:
+            self.tasks.pop(name)
 
     async def step(self) -> str:
         """Runs a single inference step, at one sample site."""
-
         try:
             self.trace
         except AttributeError:
@@ -121,8 +125,11 @@ class Gibbs:
 
     async def sample(self, num_steps: int) -> Dict[str, Any]:
         """Sample latent variables."""
+        # Run inference.
         async for _ in self.run(num_steps):
             pass
+
+        # Validate final state.
         assert all(
             self.trace.nodes[name].value == value for name, value in self.data.items()
         )
