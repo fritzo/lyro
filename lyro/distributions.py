@@ -1,6 +1,6 @@
-import abc
 import hashlib
 import sys
+from abc import ABC, abstractmethod
 from typing import Hashable, Tuple
 
 
@@ -30,16 +30,24 @@ class RandomKey:
 
     def split(self) -> Tuple["RandomKey", "RandomKey"]:
         """
-        Split the random state into (longer,shorter). Prefer to use this as::
+        Splits this random key into two keys, (deeper,shallower).
+
+        To ensure this doesn't grow too deep, prefer to use this as::
 
             new, rng = rng.split()
+
+        where ``rng`` is kept around and ``new`` is consumed sooner.
         """
         left = self.state, 0  # one tuple deeper
         right = self.state[0], self.state[-1]  # same depth
         return RandomKey(left), RandomKey(right)
 
 
-class Distribution(abc.ABC):
-    @abc.abstractmethod
+class Distribution(ABC, Hashable):
+    @abstractmethod
     def sample(self, rng: RandomKey) -> str:
+        pass
+
+    @abstractmethod
+    def __hash__(self) -> int:
         pass

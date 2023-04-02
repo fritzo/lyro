@@ -1,13 +1,13 @@
-import abc
+from abc import ABC, abstractmethod
 from typing import Dict, Tuple
 
 from .distributions import Distribution, RandomKey
 
 
-class Interpreter(abc.ABC):
+class Interpreter(ABC):
     base: "Interpreter" | None = None
 
-    @abc.abstractmethod
+    @abstractmethod
     def sample(
         self, name: str, distribution: Distribution, rng: RandomKey | None = None
     ) -> str:
