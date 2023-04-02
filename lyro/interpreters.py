@@ -7,8 +7,6 @@ from typing import Any, Dict, Tuple
 from .distributions import Distribution, V
 from .random import RandomKey, hash_json
 
-DATA = os.path.join(os.path.dirname(__file__), "data")
-
 
 class Interpreter(ABC):
     base: "Interpreter | None" = None
@@ -88,12 +86,12 @@ class Memoize(Interpreter):
 class MemoizeSqlite(Interpreter):
     """Memoize in a sqlite database."""
 
-    def __init__(self, dbname: str = os.path.join(DATA, "memo.db")) -> None:
+    def __init__(self, dbname: str) -> None:
         super().__init__()
 
         # Initialize the database.
         self.dbname = os.path.abspath(dbname)
-        os.makedirs(os.path.dirname(dbname), exist_ok=True)
+        os.makedirs(os.path.dirname(self.dbname), exist_ok=True)
         with sqlite3.connect(self.dbname) as conn:
             cursor = conn.cursor()
             cursor.execute(

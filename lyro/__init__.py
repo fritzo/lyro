@@ -1,5 +1,6 @@
 from .interpreters import (
     Memoize,
+    MemoizeSqlite,
     Replay,
     Standard,
     ThreadRandomKey,
@@ -10,6 +11,7 @@ from .runtime import sample
 
 __all__ = [
     "Memoize",
+    "MemoizeSqlite",
     "Replay",
     "Standard",
     "ThreadRandomKey",
