@@ -1,0 +1,9 @@
+black[jupyter]
+flake8
+isort
+jupyter
+matplotlib
+mypy
+nbval
+pytest
+pytest-asyncio
