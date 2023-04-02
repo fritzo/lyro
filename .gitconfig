@@ -1,0 +1,3 @@
+[merge "no-sqlite"]
+name = SQLite Merge Driver
+driver = echo \"SQLite database file cannot be merged automatically. Please choose either 'theirs' or 'ours'.\" >&2; exit 1
