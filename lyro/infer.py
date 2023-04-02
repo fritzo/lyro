@@ -4,7 +4,7 @@ from lyro.interpretations import Trace
 
 
 class Gibbs:
-    trace: Trace | None = None
+    state: Trace | None = {}
 
     def __init__(self, model: Callable[[], Awaitable]) -> None:
         self.model = model
@@ -16,6 +16,6 @@ class Gibbs:
 
     async def step(self) -> Trace:
         assert self.trace is not None
-        for name, distribution in self.trace.trace.items():
+        for name, node in self.trace.values.items():
             raise NotImplementedError("TODO")
         return self.trace
