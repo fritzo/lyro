@@ -22,15 +22,12 @@ class Gibbs:
         self,
         model: Callable[[], Awaitable],
         data: Dict[str, Any],
-        *,
-        sleep_interval: float = 0.0,
     ) -> None:
         super().__init__()
         self.model = model
         self.data = data
         self.tasks: Dict[str, asyncio.Task] = {}
         self.counts: Counter[str] = Counter()
-        self.sleep_interval = sleep_interval
 
     async def init(self) -> None:
         """Initializes inference. Must be called before :meth:`step`."""
@@ -40,7 +37,7 @@ class Gibbs:
             await self.model()
 
         # Validate data.
-        assert set(self.data).issubset(self.trace.nodes)
+        assert set(self.data) <= set(self.trace.nodes)
 
         # Restrict to latent variables.
         nodes = {
@@ -60,15 +57,18 @@ class Gibbs:
     async def _find_work(self) -> str:
         # Find currently feasible tasks.
         while True:
+            slowest = min(self.counts.values()) if self.counts else 0
             feasible = [
                 name
                 for name, deps in self.markov_blanket.items()
-                if name not in self.tasks
-                if not any(dep in self.tasks for dep in deps)
+                if name not in self.tasks  # don't duplicate work
+                if not any(dep in self.tasks for dep in deps)  # avoid conflict
+                if self.counts[name] <= slowest + 1  # don't get too far ahead
             ]
             if feasible:
                 break
-            await asyncio.sleep(self.sleep_interval)  # allow work to complete
+            # Wait for more work to complete.
+            await asyncio.wait([asyncio.sleep(0)])
 
         # Find the best task to perform, based on previous execution count.
         best = min(feasible, key=lambda name: (self.counts[name], self.rank[name]))
@@ -87,6 +87,11 @@ class Gibbs:
             with Trace() as trace:
                 await lyro.sample(name, local_posterior)
             self.trace.nodes.update(trace.nodes)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.exception(e)
+            raise
         finally:
             self.tasks.pop(name)
 
