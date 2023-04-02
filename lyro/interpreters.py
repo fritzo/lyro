@@ -1,11 +1,14 @@
+import functools
 import json
 import os
 import sqlite3
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, NamedTuple
+from typing import Any, Awaitable, Callable, Dict, Generic, NamedTuple, TypeVar
 
 from .distributions import Distribution, V
 from .random import RandomKey, hash_json
+
+T = TypeVar("T")
 
 
 class Interpreter(ABC):
@@ -27,10 +30,25 @@ class Interpreter(ABC):
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         set_interpreter(self.base)
 
+    def __call__(self, model: Callable[[], Awaitable[T]]) -> "Decorator[T]":
+        return Decorator(self, model)
+
     def __add__(self, other: "Interpreter") -> "Interpreter":
         """Stack interpreters, e.g. inner + middle + outer."""
         other.base = self
         return other
+
+
+class Decorator(Generic[T]):
+    def __init__(self, interpreter: Interpreter, model: Callable[[], Awaitable[T]]):
+        super().__init__()
+        self.interpreter = interpreter
+        self.model = model
+        functools.update_wrapper(self, model)
+
+    async def __call__(self) -> T:
+        with self.interpreter:
+            return await self.model()
 
 
 class Standard(Interpreter):

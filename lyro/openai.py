@@ -15,20 +15,23 @@ class ChatMessage(TypedDict):
 
 
 def system(content: str) -> ChatMessage:
+    """Helper to construct a system message."""
     return ChatMessage(role="system", content=content)
 
 
 def user(content: str) -> ChatMessage:
+    """Helper to construct a user message."""
     return ChatMessage(role="user", content=content)
 
 
 def assistant(content: str) -> ChatMessage:
+    """Helper to construct an assistant message."""
     return ChatMessage(role="assistant", content=content)
 
 
 class ChatGPT(Distribution[str]):
     """
-    GPT distribution over chat messages.
+    GPT distribution over chat messages, conditioned on chat history.
 
     This requires the ``openai`` package and environment variables
     OPENAI_API_ORG and OPENAI_API_KEY.
@@ -49,7 +52,8 @@ class ChatGPT(Distribution[str]):
         self.max_tokens = max_tokens
 
     async def sample(self, rng: RandomKey) -> str:
-        # See https://platform.openai.com/docs/api-reference/chat/create?lang=python
+        # Form a request.
+        # https://platform.openai.com/docs/api-reference/chat/create?lang=python
         request: Dict[str, Any] = dict(
             messages=self.messages,
             model=self.model,
@@ -58,7 +62,10 @@ class ChatGPT(Distribution[str]):
         if self.max_tokens is not None:
             request["max_tokens"] = self.max_tokens
 
+        # Call the async non-streaming API.
         raw_response = await openai.ChatCompletion.acreate(**request)
+
+        # Parse the response.
         response: dict = raw_response.to_dict_recursive()
         if any(c["finish_reason"] == "length" for c in response["choices"]):
             logger.warning("Chat was truncated")
