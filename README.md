@@ -1,2 +1,1 @@
-# langpyro
-Probabilistic Programming with Language Models
+# lyro - Probabilistic programming with language and foundation models
