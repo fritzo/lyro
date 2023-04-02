@@ -112,7 +112,7 @@ class MemoizeSqlite(Interpreter):
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
 
         # Try to reuse old result.
-        key = distribution.json(), rng.state
+        key = distribution.json(), rng
         key_hash = hash_json(key)
         print("DEBUG", key, key_hash)
         with sqlite3.connect(self.dbname) as conn:

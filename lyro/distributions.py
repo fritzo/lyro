@@ -37,5 +37,5 @@ class UniformHash(Distribution[str]):
         self.param = param
 
     async def sample(self, rng: RandomKey) -> str:
-        text = json.dumps((self.param, rng.state), sort_keys=True)
+        text = json.dumps((self.param, rng), sort_keys=True)
         return hashlib.sha256(text.encode("utf-8")).hexdigest()

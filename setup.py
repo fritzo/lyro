@@ -13,5 +13,4 @@ setup(
     python_requires=">=3.10",
     install_requires=open("requirements.txt").read().strip().split(),
     extras_require={"test": open("requirements-dev.txt").read().strip().split()},
-    include_package_data=True,
 )

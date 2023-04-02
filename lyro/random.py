@@ -1,7 +1,7 @@
 import hashlib
 import json
 import struct
-from typing import Hashable, Tuple
+from typing import NamedTuple, Tuple
 
 
 def hash_text(text: str) -> int:
@@ -19,23 +19,15 @@ def hash_json(data) -> int:
     return int_hash
 
 
-class RandomKey:
+class RandomKey(NamedTuple):
     """Immutable random state."""
 
-    def __init__(self, state: Tuple[Hashable, int] = (None, 0)):
-        self.state = state
-
-    def __hash__(self) -> int:
-        """
-        This is the main interface to consume randomness: ``hash(rng)``.
-
-        Warning: hash(...) should be called only once!
-        """
-        return hash_json(self.state)
+    head: int = 0
+    tail: "RandomKey | None" = None
 
     def split(self) -> Tuple["RandomKey", "RandomKey"]:
         """
-        Splits this random key into two keys, (deeper,shallower).
+        Splits this random key into two keys, (deeper,incremented).
 
         To ensure this doesn't grow too deep, prefer to use this as::
 
@@ -43,6 +35,6 @@ class RandomKey:
 
         where ``rng`` is kept around and ``new`` is consumed sooner.
         """
-        left = self.state, 0  # one tuple deeper
-        right = self.state[0], self.state[-1] + 1  # same depth
-        return RandomKey(left), RandomKey(right)
+        deeper = RandomKey(0, self)
+        incremented = RandomKey(self.head + 1, self.tail)
+        return deeper, incremented
