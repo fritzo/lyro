@@ -3,8 +3,9 @@ import logging
 import pytest
 
 import lyro
-from lyro.distributions import ChatGPT, UniformHash, assistant, system, user
+from lyro.distributions import UniformHash
 from lyro.interpreters import ThreadRandomKey
+from lyro.openai import ChatGPT, assistant, system, user
 
 logger = logging.getLogger(__name__)
 
