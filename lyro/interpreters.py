@@ -2,20 +2,21 @@ import json
 import os
 import sqlite3
 from abc import ABC, abstractmethod
-from typing import Dict, Tuple
+from typing import Any, Dict, Tuple
 
-from .distributions import Distribution, RandomKey, hash_json
+from .distributions import Distribution, V
+from .random import RandomKey, hash_json
 
 DATA = os.path.join(os.path.dirname(__file__), "data")
 
 
 class Interpreter(ABC):
-    base: "Interpreter" | None = None
+    base: "Interpreter | None" = None
 
     @abstractmethod
     async def sample(
-        self, name: str, distribution: Distribution, rng: RandomKey | None = None
-    ) -> str:
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
         pass
 
     def __enter__(self) -> "Interpreter":
@@ -40,8 +41,8 @@ class Interpreter(ABC):
 
 class Standard(Interpreter):
     async def sample(
-        self, name: str, distribution: Distribution, rng: RandomKey | None = None
-    ) -> str:
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
         if rng is None:
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
         return await distribution.sample(rng)
@@ -56,8 +57,8 @@ class ThreadRandomKey(Interpreter):
         self.force = force
 
     async def sample(
-        self, name: str, distribution: Distribution, rng: RandomKey | None = None
-    ) -> str:
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
         assert self.base is not None
         if rng is None or self.force:
             rng, self.rng = self.rng.split()
@@ -69,18 +70,19 @@ class Memoize(Interpreter):
 
     def __init__(self) -> None:
         super().__init__()
-        self.cache: Dict[Tuple[Distribution, RandomKey], str] = {}
+        self.cache: Dict[Tuple[Distribution, RandomKey], Any] = {}
 
     async def sample(
-        self, name: str, distribution: Distribution, rng: RandomKey | None = None
-    ) -> str:
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
         if rng is None:
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
         key = distribution, rng
         if key not in self.cache:
             assert self.base is not None
             self.cache[key] = await self.base.sample(name, distribution, rng)
-        return self.cache[key]
+        value: V = self.cache[key]
+        return value
 
 
 class MemoizeSqlite(Interpreter):
@@ -92,7 +94,7 @@ class MemoizeSqlite(Interpreter):
         # Initialize the database.
         self.dbname = os.path.abspath(dbname)
         os.makedirs(os.path.dirname(dbname), exist_ok=True)
-        with self.connect() as conn:
+        with sqlite3.connect(self.dbname) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 """
@@ -103,27 +105,24 @@ class MemoizeSqlite(Interpreter):
                 """
             )
 
-    def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.dbname)
-        conn.row_factory = sqlite3.Row
-        return conn
-
     async def sample(
-        self, name: str, distribution: Distribution, rng: RandomKey | None = None
-    ) -> str:
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
         if rng is None:
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
 
         # Try to reuse old result.
-        key_hash = hash_json((distribution.json(), rng.state))
-        with self.connect() as conn:
+        key = distribution.json(), rng.state
+        key_hash = hash_json(key)
+        print("DEBUG", key, key_hash)
+        with sqlite3.connect(self.dbname) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT value FROM key_value WHERE key_hash = ?", (key_hash,)
+                "SELECT value_json FROM key_value WHERE key_hash = ?", (key_hash,)
             )
             row = cursor.fetchone()
             if row is not None:
-                value: str = json.loads(row[0])
+                value: V = json.loads(row[0])
                 return value
 
         # Compute new result.
@@ -132,7 +131,7 @@ class MemoizeSqlite(Interpreter):
 
         # Save for later.
         value_json = json.dumps(value)
-        with self.connect() as conn:
+        with sqlite3.connect(self.dbname) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR IGNORE INTO key_value VALUES (?, ?)", (key_hash, value_json)
@@ -145,13 +144,13 @@ class Trace(Interpreter):
 
     def __init__(self) -> None:
         super().__init__()
-        self.trace: Dict[str, str] = {}
+        self.trace: Dict[str, Any] = {}
 
     async def sample(
-        self, name: str, distribution: Distribution, rng: RandomKey | None = None
-    ) -> str:
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
         assert self.base is not None
-        value = await self.base.sample(name, distribution, rng)
+        value: V = await self.base.sample(name, distribution, rng)
         self.trace[name] = value
         return value
 
@@ -163,13 +162,14 @@ class Trace(Interpreter):
 class Replay(Interpreter):
     """Replay a trace against a program."""
 
-    def __init__(self, trace: Dict[str, str]) -> None:
+    def __init__(self, trace: Dict[str, Any]) -> None:
         self.trace = trace
 
     async def sample(
-        self, name: str, distribution: Distribution, rng: RandomKey | None = None
-    ) -> str:
-        return self.trace[name]
+        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+    ) -> V:
+        value: V = self.trace[name]
+        return value
 
 
 INTERPRETER: Interpreter = Standard() + Memoize() + ThreadRandomKey()

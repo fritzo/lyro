@@ -1,62 +1,21 @@
 import hashlib
 import json
 import logging
-import sys
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Hashable, List, Literal, Tuple, TypedDict
+from typing import Any, Dict, Generic, List, Literal, TypedDict, TypeVar
+
+from .random import RandomKey, hash_json
 
 logger = logging.getLogger(__name__)
 
-
-def hash_int(s: str, num_bits: int = sys.hash_info.width) -> int:
-    """Deterministically hashes a string into a fixed width int."""
-    sha256_hash = hashlib.sha256(s.encode("utf-8")).hexdigest()
-    int_hash = int(sha256_hash, 16)
-    reduced_hash: int = int_hash % (2**num_bits)
-    return reduced_hash
+V = TypeVar("V")
 
 
-def hash_json(data, num_bits: int = sys.hash_info.width) -> int:
-    """Deterministically hashes data into a fixed width int."""
-    data_json = json.dumps(data, sort_keys=True)
-    int_hash: int = hash_int(data_json)
-    return int_hash
-
-
-class RandomKey:
-    """Immutable random state."""
-
-    def __init__(self, state: Tuple[Hashable, int] = (None, 0)):
-        self.state = state
-
-    def __hash__(self, num_bits: int = sys.hash_info.width) -> int:
-        """
-        This is the main interface to consume randomness: ``hash(rng)``.
-
-        Warning: hash(...) should be called only once!
-        """
-        return hash_json(self.state, num_bits)
-
-    def split(self) -> Tuple["RandomKey", "RandomKey"]:
-        """
-        Splits this random key into two keys, (deeper,shallower).
-
-        To ensure this doesn't grow too deep, prefer to use this as::
-
-            new, rng = rng.split()
-
-        where ``rng`` is kept around and ``new`` is consumed sooner.
-        """
-        left = self.state, 0  # one tuple deeper
-        right = self.state[0], self.state[-1]  # same depth
-        return RandomKey(left), RandomKey(right)
-
-
-class Distribution(ABC, Hashable):
+class Distribution(ABC, Generic[V]):
     """Abstract base class for immutable distributions over strings."""
 
     @abstractmethod
-    async def sample(self, rng: RandomKey) -> str:
+    async def sample(self, rng: RandomKey) -> V:
         pass
 
     def json(self) -> dict:
@@ -67,12 +26,36 @@ class Distribution(ABC, Hashable):
         return hash_json(self.json())
 
 
+class UniformHash(Distribution[str]):
+    """Deterministic distribution for testing."""
+
+    def __init__(self, param: Any = None) -> None:
+        super().__init__()
+        self.param = param
+
+    async def sample(self, rng: RandomKey) -> str:
+        text = json.dumps((self.param, rng.state), sort_keys=True)
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 class ChatMessage(TypedDict):
     role: Literal["system", "user", "assistant"]
     content: str
 
 
-class OpenAIChat(Distribution):
+def system(content: str) -> ChatMessage:
+    return ChatMessage(role="system", content=content)
+
+
+def user(content: str) -> ChatMessage:
+    return ChatMessage(role="user", content=content)
+
+
+def assistant(content: str) -> ChatMessage:
+    return ChatMessage(role="assistant", content=content)
+
+
+class ChatGPT(Distribution[str]):
     """
     GPT distribution over chat messages.
 

@@ -1,4 +1,11 @@
-from .interpreters import Memoize, Replay, Standard, ThreadRandomKey, Trace
+from .interpreters import (
+    Memoize,
+    Replay,
+    Standard,
+    ThreadRandomKey,
+    Trace,
+    set_interpreter,
+)
 from .runtime import sample
 
 __all__ = [
@@ -8,4 +15,5 @@ __all__ = [
     "ThreadRandomKey",
     "Trace",
     "sample",
+    "set_interpreter",
 ]
