@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Awaitable, Callable
 
 from lyro.interpretations import Trace
 
@@ -6,15 +6,15 @@ from lyro.interpretations import Trace
 class Gibbs:
     trace: Trace | None = None
 
-    def __init__(self, model: Callable) -> None:
+    def __init__(self, model: Callable[[], Awaitable]) -> None:
         self.model = model
 
-    def init(self) -> Trace:
+    async def init(self) -> Trace:
         with Trace() as self.trace:
-            self.model()
+            await self.model()
         return self.trace
 
-    def step(self) -> Trace:
+    async def step(self) -> Trace:
         assert self.trace is not None
         for name, distribution in self.trace.trace.items():
             raise NotImplementedError("TODO")

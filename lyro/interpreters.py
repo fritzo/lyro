@@ -8,7 +8,7 @@ class Interpreter(ABC):
     base: "Interpreter" | None = None
 
     @abstractmethod
-    def sample(
+    async def sample(
         self, name: str, distribution: Distribution, rng: RandomKey | None = None
     ) -> str:
         pass
@@ -34,12 +34,12 @@ class Interpreter(ABC):
 
 
 class Standard(Interpreter):
-    def sample(
+    async def sample(
         self, name: str, distribution: Distribution, rng: RandomKey | None = None
     ) -> str:
         if rng is None:
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
-        return distribution.sample(rng)
+        return await distribution.sample(rng)
 
 
 class ThreadRandomKey(Interpreter):
@@ -48,13 +48,13 @@ class ThreadRandomKey(Interpreter):
         self.rng = rng
         self.force = force
 
-    def sample(
+    async def sample(
         self, name: str, distribution: Distribution, rng: RandomKey | None = None
     ) -> str:
         assert self.base is not None
         if rng is None or self.force:
             rng, self.rng = self.rng.split()
-        return self.base.sample(name, distribution, rng)
+        return await self.base.sample(name, distribution, rng)
 
 
 class Memoize(Interpreter):
@@ -62,7 +62,7 @@ class Memoize(Interpreter):
         super().__init__()
         self.cache: Dict[Tuple[Distribution, RandomKey], str] = {}
 
-    def sample(
+    async def sample(
         self, name: str, distribution: Distribution, rng: RandomKey | None = None
     ) -> str:
         if rng is None:
@@ -70,7 +70,7 @@ class Memoize(Interpreter):
         key = distribution, rng
         if key not in self.cache:
             assert self.base is not None
-            self.cache[key] = self.base.sample(name, distribution, rng)
+            self.cache[key] = await self.base.sample(name, distribution, rng)
         return self.cache[key]
 
 
@@ -79,11 +79,11 @@ class Trace(Interpreter):
         super().__init__()
         self.trace: Dict[str, str] = {}
 
-    def sample(
+    async def sample(
         self, name: str, distribution: Distribution, rng: RandomKey | None = None
     ) -> str:
         assert self.base is not None
-        value = self.base.sample(name, distribution, rng)
+        value = await self.base.sample(name, distribution, rng)
         self.trace[name] = value
         return value
 
@@ -96,7 +96,7 @@ class Replay(Interpreter):
     def __init__(self, trace: Dict[str, str]) -> None:
         self.trace = trace
 
-    def sample(
+    async def sample(
         self, name: str, distribution: Distribution, rng: RandomKey | None = None
     ) -> str:
         return self.trace[name]

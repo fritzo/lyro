@@ -45,7 +45,7 @@ class RandomKey:
 
 class Distribution(ABC, Hashable):
     @abstractmethod
-    def sample(self, rng: RandomKey) -> str:
+    async def sample(self, rng: RandomKey) -> str:
         pass
 
     @abstractmethod
