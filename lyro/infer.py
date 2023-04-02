@@ -2,12 +2,12 @@ import asyncio
 import itertools
 import logging
 from collections import Counter
-from typing import AsyncGenerator, Awaitable, Callable, Dict, List, Tuple
+from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Tuple
 
 import lyro
 
 from .distributions import Distribution
-from .interpreters import Trace
+from .interpreters import Condition, Trace
 
 logger = logging.getLogger(__name__)
 
@@ -21,24 +21,32 @@ class Gibbs:
     def __init__(
         self,
         model: Callable[[], Awaitable],
+        data: Dict[str, Any],
         *,
         sleep_interval: float = 0.0,
     ) -> None:
         super().__init__()
         self.model = model
+        self.data = data
         self.tasks: Dict[str, asyncio.Task] = {}
         self.counts: Counter[str] = Counter()
         self.sleep_interval = sleep_interval
 
     async def init(self) -> None:
         """Initializes inference. Must be called before :meth:`step`."""
+        logger.debug("Gibbs initializing")
         # Sample from the prior.
-        with Trace() as self.trace:
+        with Condition(self.data), Trace() as self.trace:
             await self.model()
-        nodes = self.trace.nodes
+
+        # Restrict to latent variables.
+        nodes = {
+            name: node
+            for name, node in self.trace.nodes.items()
+            if name not in self.data
+        }
 
         # Track dependencies.
-        # FIXME we need to exclude observed nodes.
         # FIXME this is a simple complete blanket dependency.
         self.markov_blanket = {name: list(nodes) for name in nodes}
 
@@ -67,7 +75,11 @@ class Gibbs:
     async def _do_work(self, name: str) -> None:
         logger.debug(f"Gibbs step at site {repr(name)}")
         node = self.trace.nodes[name]
-        local_posterior: Distribution = node.distribution  # FIXME compute posterior
+
+        # Compute local posterior.
+        prior = node.distribution
+        local_posterior: Distribution = prior  # FIXME compute posterior
+
         with Trace() as trace:
             await lyro.sample(name, local_posterior)
         self.trace.nodes.update(trace.nodes)
@@ -90,7 +102,7 @@ class Gibbs:
         self, num_steps: int | None = None
     ) -> AsyncGenerator[Tuple[int, str], None]:
         """
-        Run inference for given number of steps or forever.
+        Run inference for given number of steps or until cancelled.
 
         Yields a tuple (step, name) where step is the step number and name is
         the name of the site that is resampled.
@@ -106,3 +118,18 @@ class Gibbs:
             self.tasks.clear()
             raise
         await asyncio.gather(*self.tasks.values())
+
+    async def sample(self, num_steps: int) -> Dict[str, Any]:
+        """Sample latent variables."""
+        async for _ in self.run(num_steps):
+            pass
+        assert all(
+            self.trace.nodes[name].value == value for name, value in self.data.items()
+        )
+
+        # Return posterior samples of latent variables.
+        return {
+            name: node.value
+            for name, node in self.trace.nodes.items()
+            if name not in self.data
+        }

@@ -53,7 +53,10 @@ class Decorator(Generic[T]):
 
 class Standard(Interpreter):
     async def sample(
-        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+        self,
+        name: str,
+        distribution: Distribution[V],
+        rng: RandomKey | None = None,
     ) -> V:
         if rng is None:
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
@@ -75,7 +78,10 @@ class ThreadRandomKey(Interpreter):
         self.force = force
 
     async def sample(
-        self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
+        self,
+        name: str,
+        distribution: Distribution[V],
+        rng: RandomKey | None = None,
     ) -> V:
         if rng is None or self.force:
             rng, self.rng = self.rng.split()
@@ -94,6 +100,7 @@ class Memoize(Interpreter):
     ) -> V:
         if rng is None:
             raise ValueError("Missing rng, try adding a ThreadRandomKey")
+
         key = hash((distribution, rng))
         if key not in self.cache:
             self.cache[key] = await self.base.sample(name, distribution, rng)
@@ -202,10 +209,8 @@ class If(Interpreter):
     """Conditional interpretation."""
 
     def __init__(
-        self,
-        cond: Callable[[str, Distribution], bool],
-        true: Interpreter,
-    ):
+        self, cond: Callable[[str, Distribution], bool], true: Interpreter
+    ) -> None:
         super().__init__()
         self.cond = cond
         self.true = true
@@ -214,8 +219,8 @@ class If(Interpreter):
         self, name: str, distribution: Distribution[V], rng: RandomKey | None = None
     ) -> V:
         if self.cond(name, distribution):
-            return await self.true.sample(name, distribution)
-        return await self.base.sample(name, distribution)
+            return await self.true.sample(name, distribution, rng)
+        return await self.base.sample(name, distribution, rng)
 
 
 INTERPRETER: Interpreter = BASE + Memoize() + ThreadRandomKey()

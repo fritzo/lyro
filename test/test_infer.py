@@ -31,19 +31,27 @@ async def alice_bob_model(num_steps: int = 5):
         alice.append(assistant(a))
         bob.append(user(a))
 
-        b = await lyro.sample(f"b_{i}", ChatGPT(alice))
+        b = await lyro.sample(f"b_{i}", ChatGPT(bob))
         alice.append(user(b))
         bob.append(assistant(b))
 
 
 @pytest.mark.asyncio
 async def test_gibbs():
-    model = lyro.Condition(
-        {
-            "b_4": "You've convinced me, tabs are better than spaces.",
-        }
-    )(alice_bob_model)
+    data = {"b_4": "You've convinced me, tabs are better than spaces."}
+    gibbs = Gibbs(alice_bob_model, data)
 
-    gibbs = Gibbs(model)
-    async for i, name in gibbs.run(num_steps=10):
-        logger.info(f"step {i}: {name}")
+    sample = await gibbs.sample(num_steps=10)
+
+    assert isinstance(sample, dict)
+    assert set(sample) == {
+        "a_0",
+        "b_0",
+        "a_1",
+        "b_1",
+        "a_2",
+        "b_2",
+        "a_3",
+        "b_3",
+        "a_4",
+    }
