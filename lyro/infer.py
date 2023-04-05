@@ -1,8 +1,7 @@
 import asyncio
-import itertools
 import logging
 from collections import Counter
-from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Tuple
+from typing import Any, Awaitable, Callable, Dict, List
 
 import lyro
 
@@ -13,7 +12,14 @@ logger = logging.getLogger(__name__)
 
 
 class Gibbs:
-    """Gibbs sampling over static program structure."""
+    """
+    Gibbs sampling over static program structure.
+
+    Args:
+        model: A probabilistic model with lyro.sample statements but
+            no observe statements.
+        data: Observed data on which to condition the model.
+    """
 
     trace: Trace
     markov_blanket: Dict[str, List[str]]
@@ -27,10 +33,11 @@ class Gibbs:
         self.model = model
         self.data = data
         self.tasks: Dict[str, asyncio.Task] = {}
-        self.counts: Counter[str] = Counter()
+        self.counts: Counter[str] = Counter()  # #completed inference steps per site
+        self.num_pending = 0
 
-    async def init(self) -> None:
-        """Initializes inference. Must be called before :meth:`step`."""
+    async def _init(self) -> None:
+        """Initializes inference.."""
         logger.debug("Gibbs initializing")
         # Sample from the prior.
         with Condition(self.data), Trace() as self.trace:
@@ -54,26 +61,33 @@ class Gibbs:
         # is biased towards the prior and ignores observations.
         self.rank = {name: i for i, name in enumerate(reversed(nodes))}
 
-    async def _find_work(self) -> str:
-        # Find currently feasible tasks.
-        while True:
-            slowest = min(self.counts.values()) if self.counts else 0
-            feasible = [
-                name
-                for name, deps in self.markov_blanket.items()
-                if name not in self.tasks  # don't duplicate work
-                if not any(dep in self.tasks for dep in deps)  # avoid conflict
-                if self.counts[name] <= slowest + 1  # don't get too far ahead
-            ]
-            if feasible:
-                break
-            # Wait for more work to complete.
-            await asyncio.wait([asyncio.sleep(0)])
+    def _find_work(self) -> str | None:
+        # Find all currently feasible tasks.
+        slowest = min(self.counts.values()) if self.counts else 0
+        feasible = [
+            name
+            for name, deps in self.markov_blanket.items()
+            if name not in self.tasks  # don't duplicate work
+            if not any(dep in self.tasks for dep in deps)  # avoid conflict
+            if self.counts[name] <= slowest  # don't get too far ahead
+        ]
+        if not feasible:
+            return None
 
         # Find the best task to perform, based on previous execution count.
         best = min(feasible, key=lambda name: (self.counts[name], self.rank[name]))
         self.counts[best] += 1
         return best
+
+    def _start_work(self) -> None:
+        """Starts as much work as possible."""
+        while self.num_pending:
+            name = self._find_work()
+            if name is None:
+                return
+            assert name not in self.tasks
+            self.num_pending -= 1
+            self.tasks[name] = asyncio.create_task(self._do_work(name))
 
     async def _do_work(self, name: str) -> None:
         logger.debug(f"Gibbs step at site {repr(name)}")
@@ -83,7 +97,9 @@ class Gibbs:
         prior = node.distribution
         local_posterior: Distribution = prior  # FIXME compute posterior
 
+        # Draw a local sample.
         try:
+            # FIXME shouldn't we call the model here?
             with Trace() as trace:
                 await lyro.sample(name, local_posterior)
             self.trace.nodes.update(trace.nodes)
@@ -95,44 +111,27 @@ class Gibbs:
         finally:
             self.tasks.pop(name)
 
-    async def step(self) -> str:
-        """Runs a single inference step, at one sample site."""
+        # Check for more work.
+        self._start_work()
+
+    async def sample(self, num_steps: int) -> Dict[str, Any]:
+        """Draw a single sample of latent variables, running inference."""
+        assert isinstance(num_steps, int) and num_steps >= 0
+
+        # Run inference.
+        self.num_pending = num_steps
         try:
-            self.trace
-        except AttributeError:
-            raise RuntimeError("Called .step() before .init()")
-
-        name = await self._find_work()
-        assert name not in self.tasks
-        self.tasks[name] = asyncio.create_task(self._do_work(name))
-        return name
-
-    async def run(
-        self, num_steps: int | None = None
-    ) -> AsyncGenerator[Tuple[int, str], None]:
-        """
-        Run inference for given number of steps or until cancelled.
-
-        Yields a tuple (step, name) where step is the step number and name is
-        the name of the site that is resampled.
-        """
-        try:
-            await self.init()
-            for i in range(num_steps) if num_steps else itertools.count():
-                name = await self.step()
-                yield i, name
+            await self._init()
+            self._start_work()
         except asyncio.CancelledError:
+            self.num_pending = 0
             for task in self.tasks.values():
                 task.cancel()
             self.tasks.clear()
             raise
-        await asyncio.gather(*self.tasks.values())
-
-    async def sample(self, num_steps: int) -> Dict[str, Any]:
-        """Sample latent variables."""
-        # Run inference.
-        async for _ in self.run(num_steps):
-            pass
+        while self.tasks:
+            await asyncio.gather(*self.tasks.values())
+        assert self.num_pending == 0
 
         # Validate final state.
         assert all(
