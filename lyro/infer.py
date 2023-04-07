@@ -28,6 +28,7 @@ class Gibbs:
         self,
         model: Callable[[], Awaitable],
         data: Dict[str, Any],
+        markov_blanket: Dict[str, List[str]] | None = None,
     ) -> None:
         super().__init__()
         self.model = model
@@ -54,8 +55,9 @@ class Gibbs:
         }
 
         # Track dependencies.
-        # FIXME this is a simple complete blanket dependency.
-        self.markov_blanket = {name: list(nodes) for name in nodes}
+        if not hasattr(self, "markov_blanket"):
+            # Default to the simple complete blanket dependency.
+            self.markov_blanket = {name: list(nodes) for name in nodes}
 
         # We use reverse rank to quickly recover from the initial trace that
         # is biased towards the prior and ignores observations.
