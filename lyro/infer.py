@@ -5,8 +5,8 @@ from typing import Any, Awaitable, Callable, Dict, List
 
 import lyro
 
-from .distributions import Distribution
 from .interpreters import Condition, Trace
+from .openai import Chat, ChatGPT, FusedGPT
 
 logger = logging.getLogger(__name__)
 
@@ -95,13 +95,23 @@ class Gibbs:
 
         # Compute local posterior.
         prior = node.distribution
-        local_posterior: Distribution = prior  # FIXME compute posterior
+        assert isinstance(prior, ChatGPT)
+        likelihoods = await self.get_likelihoods(name, FusedGPT.VARIABLE)
+        local_posterior = FusedGPT(prior.messages, likelihoods)
 
         # Draw a local sample.
         try:
-            # FIXME shouldn't we call the model here?
+            # Draw a local posterior sample at this site.
             with Trace() as trace:
-                await lyro.sample(name, local_posterior)
+                value = await lyro.sample(name, local_posterior)
+            data = {k: site.value for k, site in self.trace.nodes.items()}
+            data[name] = value
+
+            # Rerun model to update all distributions.
+            with Trace() as trace, Condition(data):
+                # WARNING if model ever cedes control, the subsequent .update()
+                # may be stale.
+                await self.model()
             self.trace.nodes.update(trace.nodes)
         except asyncio.CancelledError:
             raise
@@ -144,3 +154,20 @@ class Gibbs:
             for name, node in self.trace.nodes.items()
             if name not in self.data
         }
+
+    async def get_likelihoods(self, name: str, value: str) -> List[Chat]:
+        # Construct data with a placeholder.
+        data = {n: site.value for n, site in self.trace.nodes.items()}
+        data[name] = value
+        with Condition(data), Trace() as trace:
+            await self.model()
+
+        # Extract messages from all neighbors in the Markov blanket.
+        result: List[Chat] = []
+        for neighbor in self.markov_blanket[name]:
+            if neighbor == name:
+                continue
+            node = trace.nodes[neighbor]
+            assert isinstance(node.distribution, ChatGPT)
+            result.append(node.distribution.messages)
+        return result
