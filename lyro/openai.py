@@ -78,10 +78,7 @@ class ChatGPT(Distribution[str]):
         return text
 
 
-SYSTEM_PROMPT = """\
-You are Henri Pyrot, the brilliant detective who has listened in to the
-conversations of multiple speakers.
-"""
+SYSTEM_PROMPT = """You are Hercule Pyrot, the brilliant detective who has listened in to the conversations of multiple speakers."""
 
 
 def render_messages(messages: Chat) -> str:
@@ -124,23 +121,19 @@ class FusedGPT(Distribution[str]):
     async def sample(self, rng: RandomKey) -> str:
         assert self.prior[-1]["role"] == "user", self.prior[-1]["role"]
         messages = self.prior + [assistant("MYSTERY_UTTERANCE")]
-        question = f"""\
-The conversation starts like this:
+        question = f"""The conversation starts like this:
 
 {render_messages(messages)}
 
 Now after the MYSTERY_UTTERANCE you heard {len(self.likelihoods)} side conversations."""
         for messages in self.likelihoods:
-            question += f"""\
+            question += f"""
 
 One side conversation went like this:
 
 {render_messages(messages)}
 """
-        question += """\
-Your task now, Henri Pyrot, is to guess MYSTERY_UTTERANCE. Please write your
-best guess below, exactly as it would have appeared in the conversation.
-"""
+        question += """Your task now, Hercule Pyrot, is to guess MYSTERY_UTTERANCE. Please write your best guess below, exactly as it would have appeared in the conversation."""
         messages = [system(SYSTEM_PROMPT), user(question)]
         logger.info("DEBUG:\n{messages}")
         fused = ChatGPT(messages)
